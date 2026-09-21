@@ -76,16 +76,15 @@ INSERT INTO ${DB_LOGIN}.realmlist
   (id, name, address, port, icon, realmflags, timezone, allowedSecurityLevel, realmbuilds)
 VALUES
   (${REALM_ID}, '${REALM_NAME}', '${REALM_ADDRESS}', ${WORLD_PORT}, 0, 0, 1, 0, '7272')
-AS new
 ON DUPLICATE KEY UPDATE
-  name = new.name,
-  address = new.address,
-  port = new.port,
-  icon = new.icon,
-  realmflags = new.realmflags,
-  timezone = new.timezone,
-  allowedSecurityLevel = new.allowedSecurityLevel,
-  realmbuilds = new.realmbuilds;
+  name = VALUES(name),
+  address = VALUES(address),
+  port = VALUES(port),
+  icon = VALUES(icon),
+  realmflags = VALUES(realmflags),
+  timezone = VALUES(timezone),
+  allowedSecurityLevel = VALUES(allowedSecurityLevel),
+  realmbuilds = VALUES(realmbuilds);
 SQL
 }
 
