@@ -73,13 +73,15 @@ ARG EXTRACTORS_ONLY=OFF
 # The upstream build currently adds -march=native. That makes a published
 # image depend on the CPU that built it and can emit instructions unavailable
 # on otherwise supported hosts. Keep the image portable across x86-64 CPUs.
-RUN if grep -q -- '-march=native' CMakeLists.txt; then \
-        sed -i "s/-march=native/-march=${CPU_TARGET}/g" CMakeLists.txt; \
-    fi \
-    && if grep -q -- '-march=native' CMakeLists.txt; then \
-         echo "CMakeLists.txt still contains -march=native" >&2; \
-         exit 1; \
-       fi
+RUN if [ "$(uname -m)" = "x86_64" ]; then \
+     if grep -q -- '-march=native' CMakeLists.txt; then \
+       sed -i "s/-march=native/-march=${CPU_TARGET}/g" CMakeLists.txt; \
+     fi \
+     && if grep -q -- '-march=native' CMakeLists.txt; then \
+        echo "CMakeLists.txt still contains -march=native" >&2; \
+        exit 1; \
+      fi; \
+    fi
 
 ARG CCACHE_DIR="/ccache"
 ARG CCACHE_MAXSIZE="1G"
