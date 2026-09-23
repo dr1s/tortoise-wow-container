@@ -2,7 +2,7 @@ name: Publish to GHCR
 
 on:
   push:
-    branches: [main, master, tortoisebots]
+    branches: [main, master, development]
     paths-ignore:
       - "**.md"
       - ".env.example"
@@ -16,9 +16,9 @@ on:
   workflow_dispatch:
     inputs:
       source_ref:
-        description: "Git branch or tag of tortoise-wow/tortoise-wow to build"
+        description: "Git branch or tag of dr1s/tortoise-wow to build"
         required: false
-        default: "main"
+        default: "development"
 
 permissions:
   contents: read
@@ -36,17 +36,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - tag: modules
+          - tag: development
             build_modules: "static"
             extractors_only: "OFF"
-            is_latest: true
-          - tag: no-modules
-            build_modules: "disabled"
-            extractors_only: "OFF"
-            is_latest: false
-          - tag: extractors
-            build_modules: "disabled"
-            extractors_only: "ON"
             is_latest: false
 
     steps:
@@ -57,10 +49,10 @@ jobs:
         id: source
         run: |
           REF="${{ github.event.inputs.source_ref || 'main' }}"
-          SHA="$(git ls-remote https://github.com/tortoise-wow/tortoise-wow.git "refs/heads/${REF}" | cut -f1)"
+          SHA="$(git ls-remote https://github.com/dr1s/tortoise-wow.git "refs/heads/${REF}" | cut -f1)"
           SHORT_SHA="${SHA:0:6}"
           if [ -z "${SHA}" ]; then
-            echo "Could not resolve ref ${REF} on tortoise-wow/tortoise-wow" >&2
+            echo "Could not resolve ref ${REF} on dr1s/tortoise-wow" >&2
             exit 1
           fi
           echo "Resolved upstream ${REF} -> ${SHA}"
@@ -122,8 +114,8 @@ jobs:
             BUILD_JOBS=${{ steps.cpus.outputs.count }}
             EXTRACTORS_ONLY=${{ matrix.extractors_only }}
             USE_EXTRACTORS=OFF
-            SOURCE_REPO=https://github.com/tortoise-wow/tortoise-wow.git
-            SOURCE_REF=${{ github.event.inputs.source_ref || 'main' }}
+            SOURCE_REPO=https://github.com/dr1s/tortoise-wow.git
+            SOURCE_REF=${{ github.event.inputs.source_ref || 'development' }}
             SOURCE_COMMIT=${{ steps.source.outputs.source_commit }}
             CMAKE_BUILD_TYPE=Release
             CMAKE_INSTALL_PREFIX=/opt/turtle
