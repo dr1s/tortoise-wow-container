@@ -11,12 +11,13 @@ FROM ubuntu:${UBUNTU_VERSION} AS builder
 
 ARG BUILD_MODULES=static
 ARG USE_EXTRACTORS=OFF
-ARG SOURCE_REPO=https://github.com/Penqle/tortoise-wow.git
-ARG SOURCE_REF=main
+ARG SOURCE_REPO=https://github.com/dr1s/tortoise-wow.git
+ARG SOURCE_REF=development
 ARG CMAKE_BUILD_TYPE=Release
 ARG CMAKE_INSTALL_PREFIX=/opt/turtle
 ARG BUILD_JOBS=2
-ARG CPU_TARGET=x86-64-v2
+ARG CPU_TARGET
+ARG TARGETARCH
 # Resolved upstream commit SHA, passed in by CI. Declaring it right before the
 # clone RUN busts the layer cache whenever upstream actually moves, without
 # forcing a full rebuild when nothing changed (see issue #6).
@@ -73,18 +74,28 @@ ARG EXTRACTORS_ONLY=OFF
 # The upstream build currently adds -march=native. That makes a published
 # image depend on the CPU that built it and can emit instructions unavailable
 # on otherwise supported hosts. Keep the image portable across x86-64 CPUs.
-RUN if [ "$(uname -m)" = "x86_64" ]; then \
-     if grep -q -- '-march=native' CMakeLists.txt; then \
-       sed -i "s/-march=native/-march=${CPU_TARGET}/g" CMakeLists.txt; \
-     fi \
-     && if grep -q -- '-march=native' CMakeLists.txt; then \
-        echo "CMakeLists.txt still contains -march=native" >&2; \
+RUN if [ -n "${CPU_TARGET:-}" ]; then \
+        target="${CPU_TARGET}"; \
+    elif [ "${TARGETARCH}" = "amd64" ]; then \
+        target="x86-64-v2"; \
+    elif [ "${TARGETARCH}" = "arm64" ]; then \
+        target="armv8-a"; \
+    else \
+        echo "Unsupported architecture: ${TARGETARCH}" >&2; \
         exit 1; \
-      fi; \
+    fi \
+    && if [ "${target}" != "native" ]; then \
+        if grep -q -- '-march=native' CMakeLists.txt; then \
+            sed -i "s/-march=native/-march=${target}/g" CMakeLists.txt; \
+        fi \
+        && if grep -q -- '-march=native' CMakeLists.txt; then \
+            echo "CMakeLists.txt still contains -march=native" >&2; \
+            exit 1; \
+        fi; \
     fi
 
 ARG CCACHE_DIR="/ccache"
-ARG CCACHE_MAXSIZE="1G"
+ARG CCACHE_MAXSIZE="5G"
 ARG CCACHE_SLOPPINESS="pch_defines,time_macros,include_file_mtime"
 ARG CCACHE_COMPILERCHECK="content"
 

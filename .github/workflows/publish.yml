@@ -29,17 +29,13 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
-    timeout-minutes: 360
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - tag: development
-            build_modules: "static"
-            extractors_only: "OFF"
-            is_latest: false
+  resolve-source:
+    runs-on: ubuntu-26.04
+
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      short_sha: ${{ steps.source.outputs.short_sha }}
+      source_commit: ${{ steps.source.outputs.source_commit }}
 
     steps:
       - name: Checkout
@@ -49,32 +45,72 @@ jobs:
         id: source
         run: |
           REF="${{ github.event.inputs.source_ref || 'main' }}"
-          SHA="$(git ls-remote https://github.com/dr1s/tortoise-wow.git "refs/heads/${REF}" | cut -f1)"
-          SHORT_SHA="${SHA:0:6}"
+
+          SHA="$(git ls-remote \
+            https://github.com/dr1s/tortoise-wow.git \
+            "refs/heads/${REF}" | cut -f1)"
+
           if [ -z "${SHA}" ]; then
             echo "Could not resolve ref ${REF} on dr1s/tortoise-wow" >&2
             exit 1
           fi
+
+          SHORT_SHA="${SHA:0:6}"
           echo "Resolved upstream ${REF} -> ${SHA}"
 
           SOURCE_COMMIT="${SHA}"
+
           while IFS='|' read -r MODULE_URL MODULE_NAME MODULE_REF; do
             case "${MODULE_URL}" in
               ''|'#'*) continue ;;
             esac
-            MODULE_SHA="$(git ls-remote "${MODULE_URL}" "refs/heads/${MODULE_REF}" | cut -f1)"
+
+            MODULE_SHA="$(git ls-remote \
+              "${MODULE_URL}" \
+              "refs/heads/${MODULE_REF}" | cut -f1)"
+
             if [ -z "${MODULE_SHA}" ]; then
               echo "Could not resolve ref ${MODULE_REF} for module ${MODULE_NAME} at ${MODULE_URL}" >&2
               exit 1
             fi
+
             echo "Resolved module ${MODULE_NAME} ${MODULE_REF} -> ${MODULE_SHA}"
             SOURCE_COMMIT="${SOURCE_COMMIT}-${MODULE_SHA}"
           done < tortoise-wow/docker/modules.conf
 
           echo "SOURCE_COMMIT=${SOURCE_COMMIT}"
+
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "source_commit=${SOURCE_COMMIT}" >> "$GITHUB_OUTPUT"
+
+
+  build-and-push:
+    needs: resolve-source
+
+    runs-on: >-
+      ${{ matrix.arch == 'amd64'
+          && 'ubuntu-26.04'
+          || 'ubuntu-26.04-arm' }}
+
+    timeout-minutes: 360
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        arch:
+          - amd64
+          - arm64
+        include:
+          - tag: development
+            build_modules: "static"
+            extractors_only: "OFF"
+            is_latest: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -86,29 +122,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=${{ matrix.tag }}
-            type=raw,value=${{ matrix.tag }}-${{ steps.source.outputs.short_sha }}
-            type=raw,value=latest,enable=${{ matrix.is_latest && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
-
       - name: Get number of CPUs
         id: cpus
-        run: echo "count=$(nproc)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "count=$(nproc)" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push
+      - name: Build and push architecture image
         uses: docker/build-push-action@v6
         with:
           context: ./tortoise-wow
           file: ./tortoise-wow/Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          # Temporary architecture-specific tag.
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.tag }}-${{ needs.resolve-source.outputs.short_sha }}-${{ matrix.arch }}
           target: runtime
+          platforms: linux/${{ matrix.arch }}
           build-args: |
             BUILD_MODULES=${{ matrix.build_modules }}
             BUILD_JOBS=${{ steps.cpus.outputs.count }}
@@ -116,10 +145,71 @@ jobs:
             USE_EXTRACTORS=OFF
             SOURCE_REPO=https://github.com/dr1s/tortoise-wow.git
             SOURCE_REF=${{ github.event.inputs.source_ref || 'development' }}
-            SOURCE_COMMIT=${{ steps.source.outputs.source_commit }}
+            SOURCE_COMMIT=${{ needs.resolve-source.outputs.source_commit }}
             CMAKE_BUILD_TYPE=Release
             CMAKE_INSTALL_PREFIX=/opt/turtle
-            CPU_TARGET=x86-64-v2
-          cache-from: type=gha,scope=${{ matrix.tag }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.tag }}
+          # Separate cache per architecture.
+          cache-from: type=gha,scope=${{ matrix.tag }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.tag }}-${{ matrix.arch }}
+
           provenance: false
+
+  create-manifest:
+    needs:
+      - resolve-source
+      - build-and-push
+
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tag: development
+            is_latest: false
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create multi-architecture manifest
+        env:
+          SHORT_SHA: ${{ needs.resolve-source.outputs.short_sha }}
+        run: |
+          IMAGE="${REGISTRY}/${IMAGE_NAME}"
+
+          AMD64_IMAGE="${IMAGE}:${{ matrix.tag }}-${SHORT_SHA}-amd64"
+          ARM64_IMAGE="${IMAGE}:${{ matrix.tag }}-${SHORT_SHA}-arm64"
+
+          # Verify that both architecture images exist.
+          docker buildx imagetools inspect "${AMD64_IMAGE}"
+          docker buildx imagetools inspect "${ARM64_IMAGE}"
+
+          # Main tag:
+          #   :development
+          docker buildx imagetools create \
+            -t "${IMAGE}:${{ matrix.tag }}" \
+            "${AMD64_IMAGE}" \
+            "${ARM64_IMAGE}"
+
+          # Source-specific tag:
+          #   :development-abcdef
+          docker buildx imagetools create \
+            -t "${IMAGE}:${{ matrix.tag }}-${SHORT_SHA}" \
+            "${AMD64_IMAGE}" \
+            "${ARM64_IMAGE}"
+
+          # Optional latest tag.
+          if [ "${{ matrix.is_latest }}" = "true" ]; then
+            docker buildx imagetools create \
+              -t "${IMAGE}:latest" \
+              "${AMD64_IMAGE}" \
+              "${ARM64_IMAGE}"
+          fi
