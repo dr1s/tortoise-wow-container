@@ -119,18 +119,20 @@ RUN mkdir -p /opt/turtle/sql \
     && cp -a sql/create_databases.sql sql/base sql/database_updates /opt/turtle/sql/
 
 # Trim module source to only the runtime directories mangosd needs.
-RUN mkdir -p /opt/turtle/modules \
-    && for module_dir in /src/tortoise-wow/modules/*/; do \
-        module_name="$(basename "${module_dir}")"; \
-        target="/opt/turtle/modules/${module_name}"; \
-        mkdir -p "${target}/conf" "${target}/data/sql"; \
-        if [ -d "${module_dir}/conf" ]; then \
-            cp -a "${module_dir}/conf/." "${target}/conf/"; \
-        fi; \
-        if [ -d "${module_dir}/data/sql" ]; then \
-            cp -a "${module_dir}/data/sql/." "${target}/data/sql/"; \
-        fi; \
-    done
+RUN if [ "${BUILD_MODULES}" != "disabled" ]; then \
+        mkdir -p /opt/turtle/modules \
+        && for module_dir in /src/tortoise-wow/modules/*/; do \
+            module_name="$(basename "${module_dir}")"; \
+            target="/opt/turtle/modules/${module_name}"; \
+            mkdir -p "${target}/conf" "${target}/data/sql"; \
+            if [ -d "${module_dir}/conf" ]; then \
+                cp -a "${module_dir}/conf/." "${target}/conf/"; \
+            fi; \
+            if [ -d "${module_dir}/data/sql" ]; then \
+                cp -a "${module_dir}/data/sql/." "${target}/data/sql/"; \
+            fi; \
+        done; \
+    fi
 
 # -----------------------------------------------------------------------------
 # Runtime
@@ -191,8 +193,12 @@ RUN chmod +x /usr/local/bin/entrypoint.sh \
               /usr/local/bin/render-config.sh \
               /usr/local/bin/repair-migrations.sh \
               /usr/local/bin/healthcheck.sh \
-    && mkdir -p /opt/turtle/data /opt/turtle/logs /opt/turtle/run /var/lib/turtle-init \
-    && mkdir -p /opt/turtle/etc.dist \
+    && mkdir -p /opt/turtle/data \
+                /opt/turtle/logs \
+                /opt/turtle/run \
+                /var/lib/turtle-init \
+                /opt/turtle/modules \
+                /opt/turtle/etc.dist \
     && if [ -d /opt/turtle/etc ]; then \
          cp /opt/turtle/etc/*.conf.dist /opt/turtle/etc.dist/; \
        fi \
