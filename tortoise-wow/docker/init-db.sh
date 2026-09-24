@@ -47,11 +47,11 @@ mysql_root() {
 
 db_dir_to_db_name() {
   case "${1}" in
-    world)             echo "${DB_WORLD}" ;;
-    char|characters)   echo "${DB_CHAR}" ;;
-    auth|login)        echo "${DB_LOGIN}" ;;
-    logs)              echo "${DB_LOGS}" ;;
-    *)                 echo "" ;;
+    world)                      echo "${DB_WORLD}" ;;
+    char|characters|character)  echo "${DB_CHAR}" ;;
+    auth|login)                 echo "${DB_LOGIN}" ;;
+    logs)                       echo "${DB_LOGS}" ;;
+    *)                          echo "" ;;
   esac
 }
 
