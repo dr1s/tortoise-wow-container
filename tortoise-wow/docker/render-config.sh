@@ -56,6 +56,9 @@ mkdir -p "${ETC}"
 
 ensure_conf "${ETC_DIST}/mangosd.conf.dist" "${ETC}/mangosd.conf"
 ensure_conf "${ETC_DIST}/realmd.conf.dist" "${ETC}/realmd.conf"
+if [[ -f "${ETC_DIST}/aiplayerbot.conf" ]]; then
+  ensure_conf "${ETC_DIST}/aiplayerbot.conf" "${ETC}/aiplayerbot.conf"
+fi
 
 if [[ -f "${ETC_DIST}/ahbot.conf.dist" ]]; then
   ensure_conf "${ETC_DIST}/ahbot.conf.dist" "${ETC}/ahbot.conf"

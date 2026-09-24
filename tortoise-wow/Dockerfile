@@ -200,7 +200,7 @@ RUN chmod +x /usr/local/bin/entrypoint.sh \
                 /opt/turtle/modules \
                 /opt/turtle/etc.dist \
     && if [ -d /opt/turtle/etc ]; then \
-         cp /opt/turtle/etc/*.conf.dist /opt/turtle/etc.dist/; \
+         cp /opt/turtle/etc/*.conf* /opt/turtle/etc.dist/; \
        fi \
     && chown -R turtle:turtle /opt/turtle/data \
                               /opt/turtle/etc.dist \
